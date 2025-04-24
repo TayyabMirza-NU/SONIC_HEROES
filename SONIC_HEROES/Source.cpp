@@ -392,10 +392,12 @@ private:
     int currentFrame;
     float frameTime;
     float elapsedTime;
+    float scale;
 public:
-    Animation() :frameCount(0), currentFrame(0), frameTime(0.1f), elapsedTime(0) {}
+    Animation() :frameCount(0), currentFrame(0), frameTime(0.1f), elapsedTime(0),scale(2.5) {}
     void init(Texture& tex, int fw, int fh, int count, float tpf) {
         sprite.setTexture(tex);
+        sprite.setScale(scale, scale);
         frameCount = count;
         for (int i = 0;i < count && i < MAX_FRAMES;++i) frames[i] = IntRect(i * fw, 0, fw, fh);
         frameTime = tpf;
@@ -424,50 +426,177 @@ public:
     }
 };
 
-// ======================== Character Hierarchy ========================
 class Character {
 protected:
-    float x, y;
-    float vx, vy;
-    bool onGround;
-    float gravity, termVel, moveSpeed;
-    int width, height, hitX, hitY;
+    float posX, posY;
+    float velocityX, velocityY;
+    bool isOnGround;
+    float gravityAcceleration;
+    float terminalVelocity;
+    float movementSpeed;
+    int spriteWidth, spriteHeight;
+    int hitboxOffsetX, hitboxOffsetY;
     Animation anim;
-    Texture tex;
 public:
-    Character() :x(100), y(100), vx(0), vy(0), onGround(false), gravity(1), termVel(20), moveSpeed(4), width(24), height(35), hitX(8), hitY(5) {}
-    virtual void load(const string& path) {
-        tex.loadFromFile(path);
-        anim.init(tex, width, height, 1, 0.1f);
+    Character()
+        : posX(100.0f), posY(100.0f), velocityX(0.0f), velocityY(0.0f),
+        isOnGround(false), gravityAcceleration(1.0f), terminalVelocity(20.0f), movementSpeed(4.0f),
+        spriteWidth(24 * 2.5),
+        spriteHeight(35 * 2.5),
+        hitboxOffsetX(8 * 2.5),
+        hitboxOffsetY(2 * 2.5)
+    {
     }
+
+
+    
+
+    // Handle left/right/jump input
     virtual void handleInput() {
-        vx = 0;
-        if (Keyboard::isKeyPressed(Keyboard::A)) vx = -moveSpeed;
-        else if (Keyboard::isKeyPressed(Keyboard::D)) vx = moveSpeed;
-        if (Keyboard::isKeyPressed(Keyboard::Space) && onGround) { vy = -20; onGround = false; }
+        velocityX = 0.0f;
+        if (Keyboard::isKeyPressed(Keyboard::A))
+            velocityX = -movementSpeed;
+        else if (Keyboard::isKeyPressed(Keyboard::D))
+            velocityX = movementSpeed;
+
+        if (Keyboard::isKeyPressed(Keyboard::Space) && isOnGround) {
+            velocityY = -20.0f;
+            isOnGround = false;
+        }
     }
-    virtual void update(char** lvl, bool ctrl, float dt) {
-        if (ctrl) handleInput();
-        x += vx;
-        float ny = y + vy;
-        int gx = int((x + hitX + width / 2) / CELL_SIZE);
-        int gy = int((ny + hitY + height) / CELL_SIZE);
-        if (gy < LEVEL_HEIGHT && gx < LEVEL_WIDTH && lvl[gy][gx] == 'w') {
-            onGround = true; vy = 0;
+
+ 
+    virtual void update(char** levelGrid, bool isControlled, float deltaTime) {
+        // Input-driven horizontal velocity
+        if (isControlled)
+            handleInput();
+
+        // Apply horizontal movement
+        posX += velocityX;
+
+        // Compute proposed vertical position
+        float nextY = posY + velocityY;
+
+        // Determine foot positions for collision (bottom-left & bottom-right)
+        float leftFootX = posX + hitboxOffsetX;
+        float rightFootX = posX + spriteWidth - hitboxOffsetX;
+        // Adjust foot Y based on hitbox offset
+        float footY = nextY + spriteHeight - hitboxOffsetY;
+
+        int colLeft = static_cast<int>(leftFootX / CELL_SIZE);
+        int colRight = static_cast<int>(rightFootX / CELL_SIZE);
+        int row = static_cast<int>(footY / CELL_SIZE);
+
+        bool onFloor = false;
+        if (row >= 0 && row < LEVEL_HEIGHT) {
+            if (colLeft >= 0 && colLeft < LEVEL_WIDTH && levelGrid[row][colLeft] == 'w') onFloor = true;
+            if (colRight >= 0 && colRight < LEVEL_WIDTH && levelGrid[row][colRight] == 'w') onFloor = true;
+        }
+
+        if (onFloor) {
+            // Snap to the top of the floor tile
+            isOnGround = true;
+            velocityY = 0.0f;
+            posY = row * CELL_SIZE - (spriteHeight - hitboxOffsetY);
         }
         else {
-            onGround = false; y = ny;
-            vy += gravity;
-            if (vy > termVel) vy = termVel;
+            isOnGround = false;
+            posY = nextY;
+            // Gravity
+            velocityY += gravityAcceleration;
+            if (velocityY > terminalVelocity)
+                velocityY = terminalVelocity;
         }
-        anim.setPosition(x, y);
-        anim.update(dt);
+
+        // Update animation's position and frame
+        anim.setPosition(posX, posY);
+        anim.update(deltaTime);
     }
-    virtual void draw(RenderWindow& win) { anim.draw(win); }
+    int getX()const {
+        return posX;
+    }
+    // Draw current animation frame
+    virtual void draw(RenderWindow& window) {
+        anim.draw(window);
+    }
 };
-class Sonic : public Character { public: Sonic() { load("../Data/0left_still.png"); } };
-class Tails : public Character { public: Tails() { load("../Data/0left_still.png"); } };
-class Knuckles : public Character { public: Knuckles() { load("../Data/0left_still.png"); } };
+
+class Sonic : public Character {
+private:
+    Animation stillL, stillR;
+    Animation walkLeft, walkRight;
+    Animation runLeft, runRight;
+    Animation attackLeft, attackRight;
+    Animation* currentAnim;
+    Texture texStillL, texStillR;
+    Texture texWalkLeft, texWalkRight;
+    Texture texRunLeft, texRunRight;
+    Texture texAttackLeft, texAttackRight;
+public:
+    Sonic() {
+        // Load animations
+        texStillL.loadFromFile("../Data/0left_Still.png");
+        stillL.init(texStillL, 40, 35, 1, 0.0f);
+        texStillR.loadFromFile("../Data/0right_Still.png");
+        stillR.init(texStillR, 40, 35, 1, 0.0f);
+        texWalkLeft.loadFromFile("../Data/0jog_left.png");
+        walkLeft.init(texWalkLeft, 40, 35, 4, 0.1f);
+        texWalkRight.loadFromFile("../Data/0jog_right.png");
+        walkRight.init(texWalkRight, 40, 35, 4, 0.1f);
+        texRunLeft.loadFromFile("../Data/0left_run.png");
+        runLeft.init(texRunLeft, 40, 35, 6, 0.08f);
+        texRunRight.loadFromFile("../Data/0right_run.png");
+        runRight.init(texRunRight, 40, 35, 6, 0.08f);
+        texAttackLeft.loadFromFile("../Data/0upL.png");
+        attackLeft.init(texAttackLeft, 40, 35, 3, 0.12f);
+        texAttackRight.loadFromFile("../Data/0upR.png");
+        attackRight.init(texAttackRight, 40, 35, 3, 0.12f);
+        // Default animation state
+        currentAnim = &stillR;
+    }
+
+    // Only handle movement input here
+    void handleInput() override {
+        velocityX = 0.0f;
+        if (Keyboard::isKeyPressed(Keyboard::A))
+            velocityX = -movementSpeed;
+        else if (Keyboard::isKeyPressed(Keyboard::D))
+            velocityX = movementSpeed;
+        if (Keyboard::isKeyPressed(Keyboard::Space) && isOnGround) {
+            velocityY = -20.0f;
+            isOnGround = false;
+        }
+    }
+
+    // Update physics & select animation after physics
+    void update(char** levelGrid, bool isControlled, float deltaTime) override {
+        if (isControlled)
+            handleInput();
+        Character::update(levelGrid, isControlled, deltaTime);
+        // Select animation based on state
+        if (!isOnGround) {
+            currentAnim = (velocityX < 0 ? &attackLeft : &attackRight);
+        }
+        else if (velocityX < 0) {
+            currentAnim = (fabs(velocityX) > movementSpeed * 0.5f ? &runLeft : &walkLeft);
+        }
+        else if (velocityX > 0) {
+            currentAnim = (fabs(velocityX) > movementSpeed * 0.5f ? &runRight : &walkRight);
+        }
+        else {
+            currentAnim = (currentAnim == &walkLeft || currentAnim == &runLeft || currentAnim == &attackLeft)
+                ? &stillL : &stillR;
+        }
+        currentAnim->setPosition(posX, posY);
+        currentAnim->update(deltaTime);
+    }
+
+    void draw(RenderWindow& win) override {
+        currentAnim->draw(win);
+    }
+};
+class Tails : public Character { };
+class Knuckles : public Character {  };
 
 // ======================== Enemy Hierarchy ========================
 class Enemy {
@@ -514,6 +643,9 @@ public:
     void switchChar() { idx = (idx + 1) % MAX_CHARACTERS; }
     void update(char** lvl, float dt) { chars[idx]->update(lvl, true, dt); }
     void draw(RenderWindow& win) { chars[idx]->draw(win); }
+    int getX()const {
+        return chars[idx]->getX();
+    }
 };
 
 // ======================== Level ========================
@@ -561,6 +693,8 @@ class Leaderboard { public: void addScore(const string&, int) {} void getTopScor
                               Music music;
                           public:
                               Game() :window(VideoMode(SCREEN_X, SCREEN_Y), "Sonic-OOP"), curLevel(-1) {
+                                  View view(FloatRect(0, 0, SCREEN_X, SCREEN_Y));
+                                  window.setView(view);
                                   window.setFramerateLimit(60);
                                   music.openFromFile("../Data/labrynth.ogg"); music.setLoop(true); music.play();
                                   for (int i = 0;i < MAX_LEVELS;++i) levels[i] = new Level();
@@ -594,9 +728,230 @@ class Leaderboard { public: void addScore(const string&, int) {} void getTopScor
                                       for (int j = 0;j < MAX_COLLECTIBLES;++j) collects[j]->draw(window);
                                       player.draw(window);
                                       for (int i = 0;i < MAX_ENEMIES;++i) enemies[i]->draw(window);
+                                      // --- View clamping logic ---
+                                      View view = window.getView();
+                                      float halfScreen = SCREEN_X / 2.0f;
+                                      float levelPixelWidth = LEVEL_WIDTH * CELL_SIZE;
+
+                                      float viewCenterX = player.getX() + 0.5f * CELL_SIZE;
+
+                                      if (viewCenterX < halfScreen) viewCenterX = halfScreen;
+                                      if (viewCenterX > levelPixelWidth - halfScreen) viewCenterX = levelPixelWidth - halfScreen;
+
+                                      view.setCenter(viewCenterX, SCREEN_Y / 2.0f);
+                                      window.setView(view);
+
                                       window.display();
                                   }
                               }
                           };
 
                           int main() { Game game; game.run(); return 0; }
+
+
+//#include <iostream>
+//#include <fstream>
+//#include <cmath>
+//#include <SFML/Graphics.hpp>
+//#include <SFML/Audio.hpp>
+//#include <SFML/Window.hpp>
+//
+//using namespace sf;
+//using namespace std;
+//
+//int screen_x = 1200;
+//int screen_y = 900;
+//
+//// prototypes 
+//void player_gravity(char** lvl, float& offset_y, float& velocityY, bool& onGround, float& gravity, float& terminal_Velocity, int& hit_box_factor_x, int& hit_box_factor_y, float& player_x, float& player_y, const int cell_size, int& Pheight, int& Pwidth);
+//
+//void draw_player(RenderWindow& window, Sprite& LstillSprite, float player_x, float player_y);
+//
+//void display_level(RenderWindow& window, const int height, const int width, char** lvl, Sprite& wallSprite1, const int cell_size);
+//
+//int main()
+//{
+//
+//	RenderWindow window(VideoMode(screen_x, screen_y), "Sonic the Hedgehog-OOP", Style::Close);
+//	window.setVerticalSyncEnabled(true);
+//	window.setFramerateLimit(60);
+//	/////////////////////////////////////////////////////////////////
+//	// a cell is 64 by 64 pixels
+//
+//	// 's' is regular space
+//	// 'q' is wall1 or floor1
+//	// 'w' is wall2 or floor2
+//	// 'e' is wall3 or floor3
+//	// 'b' is breakable wall
+//	// 'z' is spring
+//
+//	// Uppercase for not interactable background accessories
+//
+//	// C is for crystals
+//
+//	const int cell_size = 64;
+//	const int height = 14;
+//	const int width = 110;
+//
+//	char** lvl = NULL;
+//
+//	Texture wallTex1;
+//	Sprite wallSprite1;
+//
+//	Music lvlMus;
+//
+//	lvlMus.openFromFile("../Data/labrynth.ogg");
+//	lvlMus.setVolume(30);
+//	lvlMus.play();
+//	lvlMus.setLoop(true);
+//
+//	lvl = new char* [height];
+//	for (int i = 0; i < height; i += 1)
+//	{
+//		lvl[i] = new char[width] {'\0'};
+//	}
+//
+//
+//	lvl[11][1] = 'w';
+//	lvl[11][2] = 'w';
+//	lvl[11][3] = 'w';
+//
+//	wallTex1.loadFromFile("../Data/brick1.png");
+//	wallSprite1.setTexture(wallTex1);
+//	////////////////////////////////////////////////////////
+//	float player_x = 100;
+//	float player_y = 100;
+//
+//	float max_speed = 15;
+//
+//	float velocityX = 0;
+//	float velocityY = 0;
+//
+//	float jumpStrength = -20; // Initial jump velocity
+//	float gravity = 1;  // Gravity acceleration
+//
+//	Texture LstillTex;
+//	Sprite LstillSprite;
+//
+//	bool onGround = false;
+//
+//	float offset_x = 0;
+//	float offset_y = 0;
+//
+//	float terminal_Velocity = 20;
+//
+//	float acceleration = 0.2;
+//
+//	float scale_x = 2.5;
+//	float scale_y = 2.5;
+//
+//	////////////////////////////
+//	int raw_img_x = 24;
+//	int raw_img_y = 35;
+//
+//	int Pheight = raw_img_y * scale_y;
+//	int Pwidth = raw_img_x * scale_x;
+//
+//	//only to adjust the player's hitbox
+//
+//	int hit_box_factor_x = 8 * scale_x;
+//	int hit_box_factor_y = 5 * scale_y;
+//
+//	LstillTex.loadFromFile("../Data/0left_still.png");
+//	LstillSprite.setTexture(LstillTex);
+//	LstillSprite.setScale(scale_x, scale_y);
+//
+//	////////////////////////////////////////////////////////
+//
+//	Event ev;
+//	while (window.isOpen())
+//	{
+//
+//		while (window.pollEvent(ev))
+//		{
+//			if (ev.type == Event::Closed)
+//			{
+//				window.close();
+//			}
+//
+//			if (ev.type == Event::KeyPressed)
+//			{
+//			}
+//
+//		}
+//
+//		if (Keyboard::isKeyPressed(Keyboard::Escape))
+//		{
+//			window.close();
+//		}
+//
+//		player_gravity(lvl, offset_y, velocityY, onGround, gravity, terminal_Velocity, hit_box_factor_x, hit_box_factor_y, player_x, player_y, cell_size, Pheight, Pwidth);
+//
+//		window.clear();
+//
+//		display_level(window, height, width, lvl, wallSprite1, cell_size);
+//		draw_player(window, LstillSprite, player_x, player_y);
+//
+//		window.display();
+//	}
+//
+//
+//	return 0;
+//}
+//
+//
+//// functions
+//
+//void player_gravity(char** lvl, float& offset_y, float& velocityY, bool& onGround, float& gravity, float& terminal_Velocity, int& hit_box_factor_x, int& hit_box_factor_y, float& player_x, float& player_y, const int cell_size, int& Pheight, int& Pwidth)
+//{
+//	offset_y = player_y;
+//
+//	offset_y += velocityY;
+//
+//	char bottom_left_down = lvl[(int)(offset_y + hit_box_factor_y + Pheight) / cell_size][(int)(player_x + hit_box_factor_x) / cell_size];
+//	char bottom_right_down = lvl[(int)(offset_y + hit_box_factor_y + Pheight) / cell_size][(int)(player_x + hit_box_factor_x + Pwidth) / cell_size];
+//	char bottom_mid_down = lvl[(int)(offset_y + hit_box_factor_y + Pheight) / cell_size][(int)(player_x + hit_box_factor_x + Pwidth / 2) / cell_size];
+//
+//
+//	if (bottom_left_down == 'w' || bottom_mid_down == 'w' || bottom_right_down == 'w')
+//	{
+//		onGround = true;
+//	}
+//	else
+//	{
+//		player_y = offset_y;
+//		onGround = false;
+//	}
+//
+//	if (!onGround)
+//	{
+//		velocityY += gravity;
+//		if (velocityY >= terminal_Velocity) velocityY = terminal_Velocity;
+//	}
+//
+//	else
+//	{
+//		velocityY = 0;
+//	}
+//
+//}
+//void draw_player(RenderWindow& window, Sprite& LstillSprite, float player_x, float player_y) {
+//
+//	LstillSprite.setPosition(player_x, player_y);
+//	window.draw(LstillSprite);
+//
+//}
+//void display_level(RenderWindow& window, const int height, const int width, char** lvl, Sprite& wallSprite1, const int cell_size)
+//{
+//	for (int i = 0; i < height; i += 1)
+//	{
+//		for (int j = 0; j < width; j += 1)
+//		{
+//			if (lvl[i][j] == 'w')
+//			{
+//				wallSprite1.setPosition(j * cell_size, i * cell_size);
+//				window.draw(wallSprite1);
+//			}
+//		}
+//	}
+//}
