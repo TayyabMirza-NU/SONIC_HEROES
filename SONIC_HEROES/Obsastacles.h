@@ -1,0 +1,16 @@
+// Obstacle.hpp
+#pragma once
+#include "Hitbox.h"
+#include "Animation.h"
+
+class Character;  // forward
+
+class Obstacle {
+protected:
+    bool isSolid{ true };
+public:
+    Hitbox hitbox;
+    Animation anim;
+    virtual ~Obstacle() = default;
+    virtual void collide(Character& c) = 0;
+};
