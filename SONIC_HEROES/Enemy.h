@@ -8,7 +8,7 @@ protected:
     int health{ 100 };
     int damage{ 10 };
 public:
-    Hitbox hitbox;
+   /* Hitbox hitbox;*/
     Animation anim;
     virtual ~Enemy() = default;
     virtual void takeDamage(int amount) { health -= amount; }

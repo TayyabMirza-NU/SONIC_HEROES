@@ -1,6 +1,6 @@
 // Obstacle.hpp
 #pragma once
-#include "Hitbox.h"
+#include "Utilities.h"
 #include "Animation.h"
 
 class Character;  // forward

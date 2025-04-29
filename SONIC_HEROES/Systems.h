@@ -1,4 +1,4 @@
-// Systems.hpp
+﻿// Systems.hpp
 #pragma once
 #include <SFML/Graphics.hpp>
 #include "Constants.h"
@@ -112,7 +112,13 @@ class TileMap {
 private:
     int cellWidth{ 0 }, cellHeight{ 0 };
 public:
-    int getCell(int x, int y);
+    char**& populate(char**& grid,int height, int width) {
+        for (int i = 0; i < width; i++)
+        {
+            grid[height - 3][i] = 'w';
+        }
+        return grid;
+    }
     void setCell(int x, int y, int type);
 };
 

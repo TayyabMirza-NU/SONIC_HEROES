@@ -6,34 +6,13 @@ using namespace std;
 using namespace sf;
 
 class Player {
-    Character* party[3];
-    int activeIndex{ 0 };
+private:
+    Character* chars[3];
+    int idx;
 public:
-    Player() {
-        party[0] = new Sonic();
-        party[1] = new Tails();
-        party[2] = new Knuckles();
-    }
-    ~Player() {
-        for (int i = 0;i < 3;++i) delete party[i];
-    }
-    void init(const Texture textures[3]) {
-        for (int i = 0;i < 3;++i) party[i]->init(const_cast<Texture&>(textures[i]));
-    }
-    void update(float dt) {
-        if (Keyboard::isKeyPressed(Keyboard::Z)) {
-            activeIndex = (activeIndex + 1) % 3;
-            // simple debounce delay omitted
-        }
-        for (int i = 0;i < 3;++i) {
-            if (i == activeIndex)
-                party[i]->updateControl(dt);
-            else
-                party[i]->follow(party[activeIndex], dt);
-        }
-    }
-    void render(RenderWindow& win, float offsetX = 0.f) {
-        for (int i = 0;i < 3;++i)
-            party[i]->render(win, offsetX);
-    }
+    Player() :idx(0) { chars[0] = new Sonic(); chars[1] = new Sonic(); chars[2] = new Sonic(); }
+    void switchChar() { idx = (idx + 1) % 3; }
+    void update(char** lvl, float dt) { chars[idx]->update(lvl, true, dt); }
+    void draw(RenderWindow& win, float offsetX) { chars[idx]->draw(win, offsetX); }
+    int getX() const { return chars[idx]->getX(); }
 };
