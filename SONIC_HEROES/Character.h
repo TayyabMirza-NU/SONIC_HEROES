@@ -1,10 +1,11 @@
-#pragma once 
+// CharacterPlatform.hpp
+#pragma once
 
 #include <SFML/Graphics.hpp>
-#include <SFML/Audio.hpp>
 #include "Constants.h"
 #include "Animation.h"
 #include <cmath>
+#include <iostream>
 
 // ======================== Hitbox ========================
 struct Hitbox {
@@ -17,7 +18,8 @@ struct Hitbox {
         shape.setOutlineThickness(1.f);
     }
     Hitbox(float w, float h)
-        : width(w), height(h) {
+        : width(w), height(h)
+    {
         shape.setSize({ w, h });
         shape.setFillColor(sf::Color::Transparent);
         shape.setOutlineColor(sf::Color::Red);
@@ -31,27 +33,33 @@ struct Hitbox {
     void setPosition(float x, float y) {
         shape.setPosition(x, y);
     }
+    float left()   const { return shape.getPosition().x; }
+    float top()    const { return shape.getPosition().y; }
+    float right()  const { return left() + width; }
+    float bottom() const { return top() + height; }
 };
 
 // ======================== Platform ========================
 class Platform {
 public:
-    static bool checkCollision(const sf::FloatRect& bbox, char** grid) {
-        int left = int(bbox.left / GameConstants::CELL_SIZE);
-        int right = int((bbox.left + bbox.width) / GameConstants::CELL_SIZE);
-        int top = int(bbox.top / GameConstants::CELL_SIZE);
-        int bottom = int((bbox.top + bbox.height) / GameConstants::CELL_SIZE);
-        for (int i = top; i <= bottom; ++i) {
-            for (int j = left; j <= right; ++j) {
-                if (i >= 0 && i < 14 && j >= 0 && j < 110 && grid[i][j] == 'w')
+    // checks if any tile under the hitbox is 'w'
+    static bool checkCollision(const Hitbox& hb, char** grid) {
+        int leftCell = int(hb.left() / GameConstants::CELL_SIZE);
+        int rightCell = int((hb.right() - 1) / GameConstants::CELL_SIZE);
+        int topCell = int(hb.top() / GameConstants::CELL_SIZE);
+        int bottomCell = int((hb.bottom() - 1) / GameConstants::CELL_SIZE);
+
+        for (int row = topCell; row <= bottomCell; ++row) {
+            if (row < 0 || row > 14) continue;
+            for (int col = leftCell; col <= rightCell; ++col) {
+                if (col < 0 || col >= 110) continue;
+                if (grid[row][col] == 'w')
                     return true;
             }
         }
         return false;
     }
 };
-
-
 
 // ======================== Character ========================
 class Character {
@@ -66,18 +74,20 @@ protected:
     int   hitboxOffsetX, hitboxOffsetY;
     Animation anim;
     Hitbox    hb;
+
 public:
     Character()
         : posX(100.f), posY(100.f),
         velocityX(0.f), velocityY(0.f),
         isOnGround(false),
-        gravityAcceleration(1.f), terminalVelocity(20.f), movementSpeed(5.f),
-        spriteWidth(int(24 * 2.5f)), spriteHeight(int(35 * 2.5f)),
-        hitboxOffsetX(int(8 * 2.5f)), hitboxOffsetY(int(2 * 2.5f)),
-        hb(spriteWidth - 2 * hitboxOffsetX,
-            spriteHeight - hitboxOffsetY)
+        gravityAcceleration(0.5f), terminalVelocity(20.f), movementSpeed(5.f),
+        spriteWidth(int(40 * 2.5f)), spriteHeight(int(38 * 2.5f)),
+        hitboxOffsetX(int(8 * 2.5f)), hitboxOffsetY(int(1.9f * 2.5f)),
+        hb(spriteWidth - 2 * hitboxOffsetX, spriteHeight - hitboxOffsetY)
     {
     }
+
+    virtual ~Character() {}
 
     virtual void handleInput() {
         velocityX = 0.f;
@@ -95,50 +105,46 @@ public:
     virtual void update(char** levelGrid, bool isControlled, float deltaTime) {
         if (isControlled) handleInput();
 
-        // Horizontal movement
+        // Horizontal movement & collision
         posX += velocityX;
-        if (velocityX != 0) {
-            float midY = posY + spriteHeight / 2.0f;
+        if (velocityX != 0.f) {
+            float midY = posY + spriteHeight * 0.5f;
             int rowMid = int(midY / GameConstants::CELL_SIZE);
             int colLeft = int((posX + hitboxOffsetX) / GameConstants::CELL_SIZE);
             int colRight = int((posX + spriteWidth - hitboxOffsetX) / GameConstants::CELL_SIZE);
-            if (rowMid >= 0 && rowMid < 14) {
+            if (rowMid >= 0 && rowMid <14) {
                 if (velocityX > 0 && levelGrid[rowMid][colRight] == 'w') posX -= velocityX;
                 if (velocityX < 0 && levelGrid[rowMid][colLeft] == 'w') posX -= velocityX;
             }
         }
 
-        // Vertical movement & collision
+        // Prepare hitbox at next vertical position
         float nextY = posY + velocityY;
-        sf::FloatRect vbox(
-            posX + hitboxOffsetX,
-            nextY + hitboxOffsetY,
-            spriteWidth - 2 * hitboxOffsetX,
-            spriteHeight - hitboxOffsetY
-        );
-        if (Platform::checkCollision(vbox, levelGrid)) {
+        hb.setPosition(posX + hitboxOffsetX, nextY + hitboxOffsetY);
+
+        // Vertical collision via hitbox
+        if (Platform::checkCollision(hb, levelGrid)) {
+            // landed
             isOnGround = true;
             velocityY = 0.f;
-            int row = int((vbox.top + vbox.height) / GameConstants::CELL_SIZE);
-            posY = row * GameConstants::CELL_SIZE - (spriteHeight - hitboxOffsetY);
+
+            // snap to top of tile
+            int landedRow = int((hb.bottom()) / GameConstants::CELL_SIZE);
+            posY = landedRow * GameConstants::CELL_SIZE
+                - (spriteHeight - hitboxOffsetY);
         }
         else {
+            // in air
             isOnGround = false;
             posY = nextY;
             velocityY += gravityAcceleration;
             if (velocityY > terminalVelocity) velocityY = terminalVelocity;
         }
 
-        // Sync hitbox
-        hb.setSize(
-            spriteWidth - 2 * hitboxOffsetX,
-            spriteHeight - hitboxOffsetY
-        );
-        hb.setPosition(
-            posX + hitboxOffsetX,
-            posY + hitboxOffsetY
-        );
+        // update hitbox to current
+        hb.setPosition(posX + hitboxOffsetX, posY + hitboxOffsetY);
 
+        // update animation
         anim.setPosition(posX, posY);
         anim.update(deltaTime);
     }
@@ -146,12 +152,12 @@ public:
     int getX() const { return int(posX); }
 
     virtual void draw(sf::RenderWindow& window, float offsetX) {
-        // Draw hitbox (behind the character)
+        // draw hitbox
         hb.shape.move(-offsetX, 0.f);
         window.draw(hb.shape);
         hb.shape.move(offsetX, 0.f);
 
-        // Draw sprite
+        // draw sprite
         anim.draw(window, offsetX);
     }
 };
@@ -162,47 +168,43 @@ private:
     Animation stillL, stillR, walkLeft, walkRight, runLeft, runRight, attackLeft, attackRight;
     Animation* currentAnim;
     Animation* previousAnim;
-    sf::Texture texStillL, texStillR, texWalkLeft, texWalkRight,
-        texRunLeft, texRunRight, texAttackLeft, texAttackRight;
+    sf::Texture texStillL, texStillR, texWalkLeft, texWalkRight;
+    sf::Texture texRunLeft, texRunRight, texAttackLeft, texAttackRight;
+
 public:
     Sonic() {
         texStillL.loadFromFile("../Data/0left_Still.png");    stillL.init(texStillL, 40, 35, 1, 0.f);
         texStillR.loadFromFile("../Data/0right_Still.png");   stillR.init(texStillR, 40, 35, 1, 0.f);
         texWalkLeft.loadFromFile("../Data/0jog_left.png");    walkLeft.init(texWalkLeft, 40, 35, 8, 0.09f);
         texWalkRight.loadFromFile("../Data/0jog_right.png");  walkRight.init(texWalkRight, 40, 35, 8, 0.09f);
-        texRunLeft.loadFromFile("../Data/0left_run.png");      runLeft.init(texRunLeft, 40, 35, 6, 0.08f);
-        texRunRight.loadFromFile("../Data/0right_run.png");    runRight.init(texRunRight, 40, 35, 6, 0.08f);
-        texAttackLeft.loadFromFile("../Data/0upL.png");        attackLeft.init(texAttackLeft, 40, 35, 3, 0.12f);
-        texAttackRight.loadFromFile("../Data/0upR.png");       attackRight.init(texAttackRight, 40, 35, 3, 0.12f);
+        texRunLeft.loadFromFile("../Data/0left_run.png");     runLeft.init(texRunLeft, 40, 35, 6, 0.08f);
+        texRunRight.loadFromFile("../Data/0right_run.png");   runRight.init(texRunRight, 40, 35, 6, 0.08f);
+        texAttackLeft.loadFromFile("../Data/0upL.png");       attackLeft.init(texAttackLeft, 40, 35, 3, 0.12f);
+        texAttackRight.loadFromFile("../Data/0upR.png");      attackRight.init(texAttackRight, 40, 35, 3, 0.12f);
 
         currentAnim = &stillR;
         previousAnim = nullptr;
     }
 
-    void handleInput() override {
-        Character::handleInput();
-    }
-
     void update(char** levelGrid, bool isControlled, float deltaTime) override {
-        if (isControlled) handleInput();
         Character::update(levelGrid, isControlled, deltaTime);
 
-        // Determine animation state
         if (!isOnGround) {
             currentAnim = (velocityX < 0 ? &attackLeft : &attackRight);
         }
         else if (std::fabs(velocityX) > movementSpeed * 1.5f) {
             currentAnim = (velocityX < 0 ? &runLeft : &runRight);
         }
-        else if (std::fabs(velocityX) > 0) {
+        else if (std::fabs(velocityX) > 0.f) {
             currentAnim = (velocityX < 0 ? &walkLeft : &walkRight);
         }
         else {
-            currentAnim = (currentAnim == &walkLeft || currentAnim == &runLeft || currentAnim == &attackLeft)
-                ? &stillL : &stillR;
+            if (currentAnim == &walkLeft || currentAnim == &runLeft || currentAnim == &attackLeft)
+                currentAnim = &stillL;
+            else
+                currentAnim = &stillR;
         }
 
-        // Reset animation if changed
         if (currentAnim != previousAnim) {
             currentAnim->reset();
             previousAnim = currentAnim;
@@ -213,12 +215,10 @@ public:
     }
 
     void draw(sf::RenderWindow& win, float offsetX) override {
-        // Draw hitbox
-        hb.shape.move(-offsetX, 0.f);
+       
+        hb.shape.setPosition(posX + hitboxOffsetX - offsetX, posY + hitboxOffsetY);
         win.draw(hb.shape);
-        hb.shape.move(offsetX, 0.f);
-
-        // Draw the current Sonic animation
+        currentAnim->setPosition(posX, posY);
         currentAnim->draw(win, offsetX);
     }
 };

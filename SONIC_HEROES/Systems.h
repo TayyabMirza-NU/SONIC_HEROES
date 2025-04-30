@@ -112,14 +112,59 @@ class TileMap {
 private:
     int cellWidth{ 0 }, cellHeight{ 0 };
 public:
-    char**& populate(char**& grid,int height, int width) {
-        for (int i = 0; i < width; i++)
-        {
-            grid[height - 3][i] = 'w';
+    char**& populate(char**& grid, int height, int width) {
+        // 1. Clear entire grid first
+        for (int i = 0; i < height; ++i)
+            for (int j = 0; j < width; ++j)
+                grid[i][j] = ' ';
+
+        for (int j = 0; j < width; ++j)
+            grid[height - 2][j] = 'w';
+
+  
+        for (int gap = 10; gap < width - 10; gap += 20) {
+            for (int j = gap; j < gap + 4; ++j) {
+                if (j < width)
+                    grid[height - 2][j] = ' ';
+            }
         }
+
+  
+        for (int j = 5; j < 15; ++j)
+            grid[height - 6][j] = 'w'; 
+
+        for (int j = 25; j < 35; ++j)
+            grid[height - 8][j] = 'w'; 
+
+        for (int j = 45; j < 50; ++j)
+            grid[height - 5][j] = 'w'; 
+
+        int stairStartX = 60;
+        int stairStartY = height - 3;
+        for (int step = 0; step < 5; ++step) {
+            grid[stairStartY - step][stairStartX + step] = 'w';
+        }
+
+    
+        int wallX = 80;
+        for (int i = height - 3; i > height - 8; --i) {
+            grid[i][wallX] = 'w';
+        }
+
+ 
+        for (int j = 95; j < 100; ++j)
+            grid[height - 2][j] = ' ';
+
+        int zzX = 105;
+        int zzY = height - 3;
+        for (int step = 0; step < 6; ++step) {
+            grid[zzY - (step % 2)][zzX + step] = 'w';
+        }
+
         return grid;
     }
-    void setCell(int x, int y, int type);
+
+    
 };
 
 class LevelTimer {

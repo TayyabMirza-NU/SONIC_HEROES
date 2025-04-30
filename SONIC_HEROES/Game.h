@@ -8,7 +8,7 @@
 #include "Player.h"
 #include "Systems.h"
 #include <iostream>
-
+ 
 using namespace sf;
 using namespace std;
 
@@ -19,6 +19,8 @@ private:
     Level* levels;
     Player player;
     Music gameMus;
+	Sprite bgSprite;
+	Texture bgTex;
     Menu menu;
     LevelManager levelManager;
 
@@ -29,6 +31,11 @@ public:
     {
         window.setVerticalSyncEnabled(true);
         window.setFramerateLimit(60);
+
+		if (!bgTex.loadFromFile("../Data/bg1.png")) {
+			cerr << "Failed to load background texture.\n";
+		}
+		bgSprite.setTexture(bgTex);
 
         if (!gameMus.openFromFile("../Data/labrynth.ogg")) {
             cerr << "Failed to load music.\n";
@@ -41,7 +48,7 @@ public:
 
         levels = new Level[LEVEL_COUNT];
         for (int i = 0; i < LEVEL_COUNT; ++i)
-            levels[i] = Level(i, 14, 110);
+            levels[i].setLevel(i, 14, 110);
     }
 
     ~Game() {
@@ -93,21 +100,18 @@ public:
                 break;
 
             case PLAY: {
-                // 1) Compute frame time
+                
                 float dt = frameClock.restart().asSeconds();
-                if (dt > 0.05f) dt = 0.05f; // guard against large dt spikes
+                if (dt > 0.05f) dt = 0.05f; 
 
-                // 2) Update level and player
                 levels[currentLevel].update(dt);
                 char** grid = levels[currentLevel].getGrid();
                 player.update(grid, dt);
 
-                // 3) Compute horizontal camera offset
                 float halfW = GameConstants::SCREEN_X * 0.5f;
                 float levelPixW = levels[currentLevel].getWidth() * GameConstants::CELL_SIZE;
                 float playerCenterX = player.getX() + GameConstants::CELL_SIZE * 0.5f;
 
-                // If level narrower than screen, lock at zero
                 float offsetX;
                 if (levelPixW <= GameConstants::SCREEN_X) {
                     offsetX = 0.f;
@@ -121,6 +125,7 @@ public:
 
                 // 4) Render
                 window.clear();
+                window.draw(bgSprite);
                 levels[currentLevel].render(window, offsetX);
                 player.draw(window, offsetX);
                 break;
