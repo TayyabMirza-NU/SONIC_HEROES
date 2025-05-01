@@ -1,4 +1,4 @@
-// CharacterPlatform.hpp
+   // CharacterPlatform.hpp
 #pragma once
 
 #include <SFML/Graphics.hpp>
@@ -50,7 +50,7 @@ public:
         int bottomCell = int((hb.bottom() - 1) / GameConstants::CELL_SIZE);
 
         for (int row = topCell; row <= bottomCell; ++row) {
-            if (row < 0 || row > 14) continue;
+            if (row < 0 || row >= 14) continue;
             for (int col = leftCell; col <= rightCell; ++col) {
                 if (col < 0 || col >= 110) continue;
                 if (grid[row][col] == 'w')
@@ -112,7 +112,7 @@ public:
             int rowMid = int(midY / GameConstants::CELL_SIZE);
             int colLeft = int((posX + hitboxOffsetX) / GameConstants::CELL_SIZE);
             int colRight = int((posX + spriteWidth - hitboxOffsetX) / GameConstants::CELL_SIZE);
-            if (rowMid >= 0 && rowMid <14) {
+            if (rowMid >= 0 && rowMid < 14) {
                 if (velocityX > 0 && levelGrid[rowMid][colRight] == 'w') posX -= velocityX;
                 if (velocityX < 0 && levelGrid[rowMid][colLeft] == 'w') posX -= velocityX;
             }
@@ -123,7 +123,7 @@ public:
         hb.setPosition(posX + hitboxOffsetX, nextY + hitboxOffsetY);
 
         // Vertical collision via hitbox
-        if (Platform::checkCollision(hb, levelGrid)) {
+        if (Platform::checkCollision(hb, levelGrid)&& velocityY>=0) {
             // landed
             isOnGround = true;
             velocityY = 0.f;
@@ -215,7 +215,7 @@ public:
     }
 
     void draw(sf::RenderWindow& win, float offsetX) override {
-       
+
         hb.shape.setPosition(posX + hitboxOffsetX - offsetX, posY + hitboxOffsetY);
         win.draw(hb.shape);
         currentAnim->setPosition(posX, posY);

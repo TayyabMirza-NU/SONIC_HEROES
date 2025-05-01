@@ -32,14 +32,14 @@ public:
             grid[i] = new char[width];
         }
     
-		grid = map.populate(grid, height, width);
+		map.populate(grid, height, width);
 
     }
     void update(float dt) {
 
     }
 
-    char** getGrid() {
+    char**& getGrid() {
         return grid;
     }
 	int getWidth() {
